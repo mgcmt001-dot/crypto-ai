@@ -251,7 +251,7 @@ def build_card_html(res):
 # ==========================================
 def main():
     with st.sidebar:
-        st.title("COMMANDER V21")
+        st.title("COMMANDER-@ZZ-JS-ZZ")
         st.caption("华尔街深度策略版 [仅供参考]")
         
         # OKX 的代码通用，通常也是 BTC/USDT 这种格式
@@ -340,4 +340,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
