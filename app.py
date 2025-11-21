@@ -255,7 +255,7 @@ def main():
         st.caption("华尔街深度策略版 [仅供参考]")
         
         # OKX 的代码通用，通常也是 BTC/USDT 这种格式
-        coins = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'DOGE/USDT', 'XRP/USDT', 'PEPE/USDT', 'ORDI/USDT']
+        coins = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'BNB/USDT', 'ZEC/USDT', 'DASH/USDT', 'DOGE/USDT', 'XRP/USDT', 'PEPE/USDT', 'ORDI/USDT']
         sel_coin = st.selectbox("选择标的", coins)
         
         if st.button("⚡ 立即分析市场", use_container_width=True):
@@ -340,5 +340,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
