@@ -11,7 +11,7 @@ from datetime import datetime
 # 1. 系统配置 (System Config)
 # ==========================================
 st.set_page_config(
-    page_title="Commander V21 [Pro]",
+    page_title="Commander-zzjszz [Pro]",
     page_icon="🦅",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -343,4 +343,5 @@ def main():
             st.plotly_chart(fig, use_container_width=True)
 
 if __name__ == "__main__":
+
     main()
