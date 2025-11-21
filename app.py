@@ -10,7 +10,7 @@ from datetime import datetime
 # 1. 系统配置 (System Config)
 # ==========================================
 st.set_page_config(
-    page_title="Commander V21 [Cloud]",
+    page_title="Commander-zzjszz [Cloud]",
     page_icon="🦅",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -252,7 +252,7 @@ def build_card_html(res):
 def main():
     with st.sidebar:
         st.title("COMMANDER V21")
-        st.caption("华尔街深度策略版 [OKX]")
+        st.caption("华尔街深度策略版 [仅供参考]")
         
         # OKX 的代码通用，通常也是 BTC/USDT 这种格式
         coins = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'DOGE/USDT', 'XRP/USDT', 'PEPE/USDT', 'ORDI/USDT']
@@ -340,3 +340,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
