@@ -4,21 +4,22 @@ import pandas as pd
 import pandas_ta as ta
 import numpy as np
 import plotly.graph_objects as go
-import concurrent.futures
 from datetime import datetime
 
 # ==========================================
 # 1. 系统配置 (System Config)
 # ==========================================
 st.set_page_config(
-    page_title="Commander V21 [Pro]",
+    page_title="Commander V21 [Cloud]",
     page_icon="🦅",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
+# 云端无需代理
+PROXY = None
 
-# 定义 CSS 样式（压缩为单行或无缩进块，防止渲染错误）
+# 定义 CSS 样式（保留 V21 的完整样式，并优化了字体对比度）
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=JetBrains+Mono:wght@400;700&display=swap');
@@ -39,7 +40,7 @@ st.markdown("""
     .pc-tag { font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 4px; }
     
     /* 逻辑列表 */
-    .pc-logic { font-size: 13px; color: #8b949e; line-height: 1.6; margin-bottom: 15px; }
+    .pc-logic { font-size: 13px; color: #c9d1d9; line-height: 1.6; margin-bottom: 15px; } /* 调亮字体颜色 */
     .pc-item { display: flex; margin-bottom: 4px; }
     .pc-icon { color: var(--gold); margin-right: 8px; font-weight: bold; }
     
@@ -57,7 +58,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. 华尔街深度分析引擎 (The Brain)
+# 2. 华尔街深度分析引擎 (V21完整核心)
 # ==========================================
 class WallStreetAnalyst:
     @staticmethod
@@ -96,7 +97,7 @@ class WallStreetAnalyst:
         # 2. 动能分析 (Momentum)
         if rsi > 70:
             logics.append(f"RSI超买 ({rsi:.0f})：买力过度消耗，警惕回调风险。")
-            score -= 1 # 逆向思维，超买不宜追高
+            score -= 1 # 逆向思维
         elif rsi < 30:
             logics.append(f"RSI超卖 ({rsi:.0f})：卖力过度消耗，存在反弹需求。")
             score += 1
@@ -169,14 +170,16 @@ class WallStreetAnalyst:
         }
 
 # ==========================================
-# 3. 稳健数据层 (Data Engine)
+# 3. 稳健数据层 (Data Engine - OKX Mod)
 # ==========================================
 class MarketDataEngine:
     def __init__(self):
-        self.ex = ccxt.okx({
-            'proxies': {'http': PROXY, 'https': PROXY},
-            'timeout': 20000, 'enableRateLimit': True
-        })
+        # 关键修改：切换到 OKX，移除 Proxy
+        config = {
+            'timeout': 30000, 
+            'enableRateLimit': True
+        }
+        self.ex = ccxt.okx(config)
     
     def fetch(self, symbol, tf):
         try:
@@ -202,26 +205,24 @@ class MarketDataEngine:
 
     def get_all(self, symbol):
         d = {}
-        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-            tasks = {
-                '1m': executor.submit(self.fetch, symbol, '1m'),
-                '15m': executor.submit(self.fetch, symbol, '15m'),
-                '1h': executor.submit(self.fetch, symbol, '1h'),
-                '1d': executor.submit(self.fetch, symbol, '1d'),
-                'ticker': executor.submit(self.ex.fetch_ticker, symbol)
-            }
-            for k, v in tasks.items():
-                try: d[k] = v.result()
-                except: d[k] = None
+        # 云端优化：改为顺序执行，防止 Cloud CPU 资源耗尽导致 Timeout
+        d['1m'] = self.fetch(symbol, '1m')
+        d['15m'] = self.fetch(symbol, '15m')
+        d['1h'] = self.fetch(symbol, '1h')
+        d['1d'] = self.fetch(symbol, '1d')
+        try:
+            d['ticker'] = self.ex.fetch_ticker(symbol)
+        except:
+            d['ticker'] = None
         return d
 
 # ==========================================
-# 4. 安全渲染层 (Safe HTML Rendering)
+# 4. 安全渲染层 (V21 拼接逻辑)
 # ==========================================
 def build_card_html(res):
     if not res: return "<div style='color:red'>数据不足</div>"
     
-    # 1. 构建逻辑列表 (String Concatenation only, NO indentation)
+    # 1. 构建逻辑列表
     logic_items = ""
     for lg in res['logics']:
         logic_items += f"<div class='pc-item'><span class='pc-icon'>•</span><span>{lg}</span></div>"
@@ -232,7 +233,7 @@ def build_card_html(res):
         plan_html = "<div class='pc-plan' style='text-align:center; color:#666;'><div>⚖️ 市场震荡中</div><div style='font-size:12px'>建议空仓等待方向明确</div></div>"
     else:
         c_val = "#2ea043" if "多" in res['action'] else "#da3633"
-        # 逐行构建，避免换行符
+        # 逐行构建
         p_rows = ""
         p_rows += f"<div class='pp-row'><span class='pp-lbl'>操作建议</span><span class='pp-val' style='color:{c_val}'>{res['action']}</span></div>"
         p_rows += f"<div class='pp-row'><span class='pp-lbl'>建议入场</span><span class='pp-val'>${res['entry']:,.2f}</span></div>"
@@ -240,7 +241,7 @@ def build_card_html(res):
         p_rows += f"<div class='pp-row'><span class='pp-lbl'>目标位</span><span class='pp-val' style='color:#2ea043'>${res['tp']:,.2f}</span></div>"
         plan_html = f"<div class='pc-plan' style='border-color:{c_val}40'>{p_rows}</div>"
 
-    # 3. 组合最终 HTML (一行流)
+    # 3. 组合最终 HTML
     html = f"<div class='pro-card'><div class='pc-header'><span class='pc-title'>{res['tf']}</span><span class='pc-tag {res['css']}'>{res['bias']}</span></div><div class='pc-logic'>{logic_items}</div>{plan_html}</div>"
     
     return html
@@ -251,9 +252,10 @@ def build_card_html(res):
 def main():
     with st.sidebar:
         st.title("COMMANDER V21")
-        st.caption("华尔街深度策略版")
+        st.caption("华尔街深度策略版 [OKX]")
         
-        coins = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'BNB/USDT', 'ZEC/USDT', 'DASH/USDT','DOGE/USDT', 'XRP/USDT', 'PEPE/USDT', 'ORDI/USDT']
+        # OKX 的代码通用，通常也是 BTC/USDT 这种格式
+        coins = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'DOGE/USDT', 'XRP/USDT', 'PEPE/USDT', 'ORDI/USDT']
         sel_coin = st.selectbox("选择标的", coins)
         
         if st.button("⚡ 立即分析市场", use_container_width=True):
@@ -264,17 +266,17 @@ def main():
 
     eng = MarketDataEngine()
     
-    with st.spinner(f"正在进行全周期扫描: {sel_coin} ..."):
+    with st.spinner(f"正在从 OKX 获取全周期数据: {sel_coin} ..."):
         data = eng.get_all(sel_coin)
         
     if not data or not data.get('ticker'):
-        st.error("网络连接失败，请检查代理设置。")
+        st.error("网络连接失败，OKX 接口响应超时。")
         st.stop()
         
     # --- 顶部行情 ---
     tick = data['ticker']
     p_color = "#2ea043" if tick['percentage'] >= 0 else "#da3633"
-    # 使用列表拼接而非多行字符串
+    # 使用列表拼接
     head_parts = []
     head_parts.append("<div style='background:#161b22; border:1px solid #d2a656; padding:15px; border-radius:6px; margin-bottom:20px; display:flex; justify-content:space-between; align-items:center;'>")
     head_parts.append(f"<div><div style='color:#d2a656; font-weight:bold; font-size:18px;'>{sel_coin} 深度研报</div><div style='color:#8b949e; font-size:12px;'>报告时间: {datetime.now().strftime('%H:%M:%S')}</div></div>")
@@ -303,7 +305,6 @@ def main():
         st.markdown(build_card_html(r_1d), unsafe_allow_html=True)
         
     # --- 最终建议 ---
-    # 计分板逻辑
     total_score = 0
     if r_15m: total_score += r_15m['score']
     if r_1h: total_score += r_1h['score'] * 1.5 # 1小时权重更高
