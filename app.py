@@ -11,14 +11,17 @@ from datetime import datetime
 # 1. 系统配置 (System Config)
 # ==========================================
 st.set_page_config(
-    page_title="Commander-zzjszz [Pro]",
+    page_title="Commander Cloud [AI]",
     page_icon="🦅",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
+# --- 云端部署关键修改：代理设为 None ---
+PROXY = None 
+# ------------------------------------
 
-# 定义 CSS 样式（压缩为单行或无缩进块，防止渲染错误）
+# 定义 CSS 样式
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=JetBrains+Mono:wght@400;700&display=swap');
@@ -81,9 +84,9 @@ class WallStreetAnalyst:
         
         # --- 逻辑推导容器 ---
         logics = []
-        score = 0 # 评分系统: >2 做多, <-2 做空
+        score = 0 
         
-        # 1. 趋势结构 (Trend Structure)
+        # 1. 趋势结构
         if price > ema20 > ema50:
             logics.append("多头排列：价格 > EMA20 > EMA50，买盘控盘，趋势向上。")
             score += 2
@@ -93,10 +96,10 @@ class WallStreetAnalyst:
         else:
             logics.append("均线纠缠：EMA短期均线粘合，市场处于震荡蓄势阶段。")
             
-        # 2. 动能分析 (Momentum)
+        # 2. 动能分析
         if rsi > 70:
             logics.append(f"RSI超买 ({rsi:.0f})：买力过度消耗，警惕回调风险。")
-            score -= 1 # 逆向思维，超买不宜追高
+            score -= 1 
         elif rsi < 30:
             logics.append(f"RSI超卖 ({rsi:.0f})：卖力过度消耗，存在反弹需求。")
             score += 1
@@ -110,7 +113,7 @@ class WallStreetAnalyst:
                 logics.append("MACD增强：空头动能正在持续放大。")
                 score -= 1
                 
-        # 3. 量价行为 (Price Action & Volume)
+        # 3. 量价行为
         body = abs(c['close'] - c['open'])
         lower_wick = min(c['close'], c['open']) - c['low']
         upper_wick = c['high'] - max(c['close'], c['open'])
@@ -135,13 +138,12 @@ class WallStreetAnalyst:
         
         risk_unit = atr * 1.5 if not np.isnan(atr) else price * 0.02
         
-        if score >= 3: # 严格门槛
+        if score >= 3: 
             action = "做多 (LONG)"
             bias_text = "强烈看涨"
             css_class = "bg-bull"
             entry = price
             sl = price - risk_unit
-            # 智能止损优化
             if not np.isnan(ma200) and price > ma200 and (price - ma200) < risk_unit:
                 sl = ma200 * 0.995
             tp = price + risk_unit * 2
@@ -173,24 +175,24 @@ class WallStreetAnalyst:
 # ==========================================
 class MarketDataEngine:
     def __init__(self):
+        # 这里的逻辑已经修正，不会再报缩进错误
         config = {
-    'timeout': 20000, 
-    'enableRateLimit': True
-}
-if PROXY:
-    config['proxies'] = {'http': PROXY, 'https': PROXY}
-    
-self.ex = ccxt.binance(config)
+            'timeout': 20000, 
+            'enableRateLimit': True
+        }
+        # 如果有代理配置就加上，没有就不加 (适应云端 PROXY=None)
+        if PROXY:
+            config['proxies'] = {'http': PROXY, 'https': PROXY}
+            
+        self.ex = ccxt.binance(config)
     
     def fetch(self, symbol, tf):
         try:
-            # 抓取足够数据以确保指标稳定
             bars = self.ex.fetch_ohlcv(symbol, timeframe=tf, limit=300)
             if not bars: return None
             df = pd.DataFrame(bars, columns=['time', 'open', 'high', 'low', 'close', 'vol'])
             df['time'] = pd.to_datetime(df['time'], unit='ms')
             
-            # 计算指标
             df['EMA20'] = ta.ema(df['close'], length=20)
             df['EMA50'] = ta.ema(df['close'], length=50)
             df['MA200'] = ta.sma(df['close'], length=200)
@@ -220,23 +222,20 @@ self.ex = ccxt.binance(config)
         return d
 
 # ==========================================
-# 4. 安全渲染层 (Safe HTML Rendering)
+# 4. 安全渲染层
 # ==========================================
 def build_card_html(res):
     if not res: return "<div style='color:red'>数据不足</div>"
     
-    # 1. 构建逻辑列表 (String Concatenation only, NO indentation)
     logic_items = ""
     for lg in res['logics']:
         logic_items += f"<div class='pc-item'><span class='pc-icon'>•</span><span>{lg}</span></div>"
     
-    # 2. 构建交易计划
     plan_html = ""
     if "观望" in res['action']:
         plan_html = "<div class='pc-plan' style='text-align:center; color:#666;'><div>⚖️ 市场震荡中</div><div style='font-size:12px'>建议空仓等待方向明确</div></div>"
     else:
         c_val = "#2ea043" if "多" in res['action'] else "#da3633"
-        # 逐行构建，避免换行符
         p_rows = ""
         p_rows += f"<div class='pp-row'><span class='pp-lbl'>操作建议</span><span class='pp-val' style='color:{c_val}'>{res['action']}</span></div>"
         p_rows += f"<div class='pp-row'><span class='pp-lbl'>建议入场</span><span class='pp-val'>${res['entry']:,.2f}</span></div>"
@@ -244,20 +243,18 @@ def build_card_html(res):
         p_rows += f"<div class='pp-row'><span class='pp-lbl'>目标位</span><span class='pp-val' style='color:#2ea043'>${res['tp']:,.2f}</span></div>"
         plan_html = f"<div class='pc-plan' style='border-color:{c_val}40'>{p_rows}</div>"
 
-    # 3. 组合最终 HTML (一行流)
     html = f"<div class='pro-card'><div class='pc-header'><span class='pc-title'>{res['tf']}</span><span class='pc-tag {res['css']}'>{res['bias']}</span></div><div class='pc-logic'>{logic_items}</div>{plan_html}</div>"
-    
     return html
 
 # ==========================================
-# 5. 主程序 (Main)
+# 5. 主程序
 # ==========================================
 def main():
     with st.sidebar:
-        st.title("COMMANDER V21")
-        st.caption("华尔街深度策略版")
+        st.title("COMMANDER CLOUD")
+        st.caption("AI 华尔街分析师 (云端版)")
         
-        coins = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'BNB/USDT', 'ZEC/USDT', 'DASH/USDT','DOGE/USDT', 'XRP/USDT', 'PEPE/USDT', 'ORDI/USDT']
+        coins = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'DOGE/USDT', 'XRP/USDT', 'PEPE/USDT', 'ORDI/USDT']
         sel_coin = st.selectbox("选择标的", coins)
         
         if st.button("⚡ 立即分析市场", use_container_width=True):
@@ -268,34 +265,30 @@ def main():
 
     eng = MarketDataEngine()
     
-    with st.spinner(f"正在进行全周期扫描: {sel_coin} ..."):
+    with st.spinner(f"云端节点正在连接币安: {sel_coin} ..."):
         data = eng.get_all(sel_coin)
         
     if not data or not data.get('ticker'):
-        st.error("网络连接失败，请检查代理设置。")
+        st.error("云端连接超时，请点击刷新重试。")
         st.stop()
         
-    # --- 顶部行情 ---
     tick = data['ticker']
     p_color = "#2ea043" if tick['percentage'] >= 0 else "#da3633"
-    # 使用列表拼接而非多行字符串
+    
     head_parts = []
     head_parts.append("<div style='background:#161b22; border:1px solid #d2a656; padding:15px; border-radius:6px; margin-bottom:20px; display:flex; justify-content:space-between; align-items:center;'>")
-    head_parts.append(f"<div><div style='color:#d2a656; font-weight:bold; font-size:18px;'>{sel_coin} 深度研报</div><div style='color:#8b949e; font-size:12px;'>报告时间: {datetime.now().strftime('%H:%M:%S')}</div></div>")
+    head_parts.append(f"<div><div style='color:#d2a656; font-weight:bold; font-size:18px;'>{sel_coin} 深度研报</div><div style='color:#8b949e; font-size:12px;'>报告时间: {datetime.now().strftime('%H:%M:%S')} (UTC)</div></div>")
     head_parts.append(f"<div style='text-align:right'><div style='font-size:28px; font-weight:bold; color:#e6edf3'>${tick['last']:,.2f}</div><div style='color:{p_color}; font-weight:bold'>{tick['percentage']:.2f}%</div></div>")
     head_parts.append("</div>")
     st.markdown("".join(head_parts), unsafe_allow_html=True)
     
-    # --- 分析卡片 ---
     c1, c2 = st.columns(2)
     
-    # 计算逻辑
     r_1m = WallStreetAnalyst.deep_scan(data['1m'], "超短线 (1 Min)")
     r_15m = WallStreetAnalyst.deep_scan(data['15m'], "日内 (15 Min)")
     r_1h = WallStreetAnalyst.deep_scan(data['1h'], "波段 (1 Hour)")
     r_1d = WallStreetAnalyst.deep_scan(data['1d'], "趋势 (1 Day)")
     
-    # 渲染
     with c1:
         st.markdown("#### ⚡ 短线博弈")
         st.markdown(build_card_html(r_1m), unsafe_allow_html=True)
@@ -306,12 +299,10 @@ def main():
         st.markdown(build_card_html(r_1h), unsafe_allow_html=True)
         st.markdown(build_card_html(r_1d), unsafe_allow_html=True)
         
-    # --- 最终建议 ---
-    # 计分板逻辑
     total_score = 0
     if r_15m: total_score += r_15m['score']
-    if r_1h: total_score += r_1h['score'] * 1.5 # 1小时权重更高
-    if r_1d: total_score += r_1d['score'] * 2.0 # 日线权重最高
+    if r_1h: total_score += r_1h['score'] * 1.5 
+    if r_1d: total_score += r_1d['score'] * 2.0 
     
     final_text = "市场混沌，建议观望"
     f_bg = "#8b949e"
@@ -332,7 +323,6 @@ def main():
     sum_html = f"<div style='background:{f_bg}20; border:1px solid {f_bg}; padding:20px; border-radius:6px; text-align:center; margin-top:20px;'><div style='color:{f_bg}; font-weight:bold; font-size:14px;'>首席分析师最终裁决</div><div style='color:#e6edf3; font-size:24px; font-weight:bold; margin:10px 0;'>{final_text}</div><div style='color:#8b949e; font-size:13px'>综合评分: {total_score:.1f} (评分>4为极强信号)</div></div>"
     st.markdown(sum_html, unsafe_allow_html=True)
     
-    # --- 图表 ---
     with st.expander("📊 查看 1小时 K线深度图 (Price Action)", expanded=True):
         if data['1h'] is not None:
             df = data['1h']
@@ -342,6 +332,4 @@ def main():
             st.plotly_chart(fig, use_container_width=True)
 
 if __name__ == "__main__":
-
     main()
-
