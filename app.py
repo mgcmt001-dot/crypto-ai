@@ -17,7 +17,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-PROXY = NONE
 
 # 定义 CSS 样式（压缩为单行或无缩进块，防止渲染错误）
 st.markdown("""
@@ -345,3 +344,4 @@ def main():
 if __name__ == "__main__":
 
     main()
+
