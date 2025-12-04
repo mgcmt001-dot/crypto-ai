@@ -230,7 +230,7 @@ def build_card_html(res):
     # 2. 构建交易计划
     plan_html = ""
     if "观望" in res['action']:
-        plan_html = "<div class='pc-plan' style='text-align:center; color:#666;'><div⚖️ 市场震荡中</div><div style='font-size:12px'>建议空仓等待方向明确</div></div>"
+        plan_html = "<div class='pc-plan' style='text-align:center; color:#666;'><div 市场震荡中</div><div style='font-size:12px'>建议空仓等待方向明确</div></div>"
     else:
         c_val = "#2ea043" if "多" in res['action'] else "#da3633"
         # 逐行构建
@@ -340,5 +340,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
