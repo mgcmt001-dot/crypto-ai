@@ -4,392 +4,341 @@ import pandas as pd
 import pandas_ta as ta
 import numpy as np
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-from dataclasses import dataclass, field
 from datetime import datetime
 
-# ============================================================
-# 1. 系统配置与样式
-# ============================================================
+# ==========================================
+# 1. 系统配置 (System Config)
+# ==========================================
 st.set_page_config(
-    page_title="Rolling Strategy Pro - 建控辅助系统",
-    page_icon="🚀",
+    page_title="Commander-zzjszz [Cloud]",
+    page_icon="🦅",
     layout="wide",
+    initial_sidebar_state="expanded"
 )
 
+# 云端无需代理
+PROXY = None
+
+# 定义 CSS 样式（保留 V21 的完整样式，并优化了字体对比度）
 st.markdown("""
 <style>
-    .stApp { background-color: #0e1117; color: #e0e0e0; }
-    .metric-card {
-        background: #1f2937; border: 1px solid #374151; padding: 15px; border-radius: 8px;
-        margin-bottom: 10px;
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=JetBrains+Mono:wght@400;700&display=swap');
+    :root { --bg:#0e1117; --card:#161b22; --border:#30363d; --gold:#d2a656; --green:#2ea043; --red:#da3633; --text:#e6edf3; }
+    html,body,[class*="css"]{font-family:'Noto Sans SC',sans-serif;background:var(--bg);color:var(--text);}
+    
+    /* 卡片容器 */
+    .pro-card {
+        background: var(--card); border: 1px solid var(--border); border-radius: 6px; 
+        padding: 16px; margin-bottom: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        transition: transform 0.2s;
     }
-    .signal-badge { padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 12px; }
-    .badge-green { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid #059669; }
-    .badge-yellow { background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid #b45309; }
-    .badge-red { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid #b91c1c; }
+    .pro-card:hover { border-color: var(--gold); }
+    
+    /* 头部 */
+    .pc-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #21262d; padding-bottom: 10px; margin-bottom: 12px; }
+    .pc-title { font-size: 16px; font-weight: 700; color: var(--gold); }
+    .pc-tag { font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 4px; }
+    
+    /* 逻辑列表 */
+    .pc-logic { font-size: 13px; color: #c9d1d9; line-height: 1.6; margin-bottom: 15px; } /* 调亮字体颜色 */
+    .pc-item { display: flex; margin-bottom: 4px; }
+    .pc-icon { color: var(--gold); margin-right: 8px; font-weight: bold; }
+    
+    /* 交易计划表格 */
+    .pc-plan { background: #0d1117; border: 1px dashed #30363d; border-radius: 4px; padding: 12px; }
+    .pp-row { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 13px; }
+    .pp-lbl { color: #8b949e; }
+    .pp-val { font-family: 'JetBrains Mono'; font-weight: 700; }
+    
+    /* 颜色定义 */
+    .c-bull { color: var(--green); } .bg-bull { background: rgba(46,160,67,0.15); color: var(--green); border:1px solid rgba(46,160,67,0.3); }
+    .c-bear { color: var(--red); } .bg-bear { background: rgba(218,54,51,0.15); color: var(--red); border:1px solid rgba(218,54,51,0.3); }
+    .c-flat { color: #8b949e; } .bg-flat { background: rgba(139,148,158,0.1); color: #8b949e; border:1px solid #30363d; }
 </style>
 """, unsafe_allow_html=True)
 
-# ============================================================
-# 2. 数据引擎
-# ============================================================
-class DataEngine:
-    def __init__(self):
-        self.exchange = ccxt.okx({'enableRateLimit': True})
-
-    def fetch_data(self, symbol, limit_daily=1000, limit_weekly=200):
-        """同时拉取日线和周线数据，用于双周期共振分析"""
-        try:
-            # 日线数据 (用于交易和趋势)
-            d_ohlcv = self.exchange.fetch_ohlcv(symbol, '1d', limit=limit_daily)
-            df_d = self._process_data(d_ohlcv)
-            
-            # 周线数据 (用于大周期RSI底部判断)
-            w_ohlcv = self.exchange.fetch_ohlcv(symbol, '1w', limit=limit_weekly)
-            df_w = self._process_data(w_ohlcv)
-            
-            return df_d, df_w
-        except Exception as e:
-            st.error(f"数据拉取失败: {e}")
-            return pd.DataFrame(), pd.DataFrame()
-
-    def _process_data(self, ohlcv):
-        df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-        df.set_index('timestamp', inplace=True)
-        return df
-
-# ============================================================
-# 3. 策略逻辑核心
-# ============================================================
-class StrategyEngine:
-    def __init__(self, df_daily, df_weekly):
-        self.d = df_daily.copy()
-        self.w = df_weekly.copy()
+# ==========================================
+# 2. 华尔街深度分析引擎 (V21完整核心)
+# ==========================================
+class WallStreetAnalyst:
+    @staticmethod
+    def deep_scan(df, tf_name):
+        if df is None or len(df) < 60: return None
         
-    def prepare_indicators(self, breakout_days=90, vol_mult=3.0):
-        # --- 周线指标 ---
-        self.w['RSI_W'] = ta.rsi(self.w['close'], length=14)
+        c = df.iloc[-1]
+        prev = df.iloc[-2]
         
-        # --- 日线指标 ---
-        # 1. 趋势均线
-        self.d['MA20'] = ta.sma(self.d['close'], length=20)
-        self.d['MA200'] = ta.sma(self.d['close'], length=200)
+        # --- 基础指标 ---
+        price = c['close']
+        ema20 = c['EMA20']
+        ema50 = c['EMA50']
+        ma200 = c.get('MA200', np.nan)
+        atr = c['ATR']
+        rsi = c['RSI']
+        macd = c['MACD']
+        sig = c['SIGNAL']
+        vol_ma = df['vol'].mean()
+        rvol = c['vol'] / vol_ma if vol_ma > 0 else 1.0
         
-        # 2. 震荡突破 (Donchian Channel)
-        self.d['High_N'] = self.d['high'].rolling(breakout_days).max().shift(1) # N日高点
-        self.d['Low_N'] = self.d['low'].rolling(breakout_days).min().shift(1)
+        # --- 逻辑推导容器 ---
+        logics = []
+        score = 0 # 评分系统: >2 做多, <-2 做空
         
-        # 3. 成交量异动
-        self.d['Vol_MA'] = ta.sma(self.d['volume'], length=20)
-        self.d['Vol_Boom'] = self.d['volume'] > (self.d['Vol_MA'] * vol_mult)
-        
-        # 4. 风控指标
-        self.d['ATR'] = ta.atr(self.d['high'], self.d['low'], self.d['close'], length=14)
-        
-        # --- 融合周线数据到日线 (Forward Fill) ---
-        # 为了在日线循环中能看到当时的周线RSI状态
-        # 这里做一个简化处理，实际量化需要更严谨的对齐
-        self.w_resampled = self.w['RSI_W'].resample('1D').ffill()
-        self.d = self.d.join(self.w_resampled.rename('RSI_W_DailyMap'), how='left')
-        
-        return self.d.dropna()
-
-# ============================================================
-# 4. 滚仓回测模拟器 (Event Driven)
-# ============================================================
-@dataclass
-class Position:
-    entry_price: float = 0.0
-    size: float = 0.0      # 币的数量
-    leverage: float = 0.0  # 当前实际杠杆
-    stop_loss: float = 0.0
-    peak_price: float = 0.0 # 持仓期间最高价
-
-class RollingBacktester:
-    def __init__(self, initial_capital=10000.0):
-        self.capital = initial_capital
-        self.balance = initial_capital
-        self.position = None
-        self.history = [] # 资金曲线
-        self.trades = []  # 交易记录
-        
-    def run(self, df, params):
-        """
-        params: {
-            'rsi_bottom': 35,
-            'max_leverage': 3.0,
-            'add_step': 0.10,  # 每涨10%加仓
-            'trail_atr': 2.0   # 2倍ATR止损
-        }
-        """
-        for i in range(len(df)):
-            bar = df.iloc[i]
-            date = df.index[i]
-            price = bar['close']
-            
-            # 更新持仓市值
-            equity = self.balance
-            if self.position:
-                unrealized_pnl = (price - self.position.entry_price) * self.position.size
-                equity = self.balance + unrealized_pnl
-                # 更新最高价用于移动止损
-                if price > self.position.peak_price:
-                    self.position.peak_price = price
-            
-            self.history.append({'date': date, 'equity': equity, 'price': price})
-            
-            # --- 1. 离场/风控逻辑 (优先级最高) ---
-            if self.position:
-                # 触发硬止损 或 跌破移动止损
-                # 移动止损逻辑：最高价回撤 N * ATR，或者成本保护
-                trail_sl = self.position.peak_price - (params['trail_atr'] * bar['ATR'])
-                # 核心规则：如果有浮盈，止损线上移至开仓均价，保本！
-                if trail_sl < self.position.entry_price and (price > self.position.entry_price * 1.05):
-                     trail_sl = self.position.entry_price * 1.01 # 微利保护
-                
-                actual_sl = max(self.position.stop_loss, trail_sl)
-                
-                # 跌破MA20趋势线强制离场
-                trend_sl = bar['MA20']
-                
-                if bar['low'] < actual_sl or bar['close'] < trend_sl:
-                    exit_price = min(bar['open'], actual_sl) # 简化撮合
-                    pnl = (exit_price - self.position.entry_price) * self.position.size
-                    self.balance += pnl
-                    self.trades.append({
-                        'type': 'CLOSE', 'date': date, 'price': exit_price, 
-                        'pnl': pnl, 'reason': 'Stop/Trend Break'
-                    })
-                    self.position = None
-                    continue
-
-            # --- 2. 建仓/滚仓逻辑 ---
-            
-            # 信号A: 底部埋伏 (RSI < 35) -> 建立 1x 底仓
-            # 条件：空仓 + 周RSI低 + 价格在MA200下方(熊市深跌)或上方(牛市回调)
-            is_bottom = (bar['RSI_W_DailyMap'] < params['rsi_bottom'])
-            
-            if self.position is None and is_bottom:
-                pos_size = (self.balance * 1.0) / price # 1x 杠杆
-                self.position = Position(
-                    entry_price=price, size=pos_size, leverage=1.0, 
-                    stop_loss=price - 2*bar['ATR'], peak_price=price
-                )
-                self.trades.append({'type': 'OPEN_BASE', 'date': date, 'price': price, 'leverage': 1.0})
-                continue
-                
-            # 信号B: 趋势突破 (Price > 90日新高 & Vol > 3倍) -> 建立/加仓
-            is_breakout = (price > bar['High_N']) and bar['Vol_Boom'] and (price > bar['MA20'])
-            
-            # 情况1: 空仓且突破 -> 这是一个极其强烈的右侧入场点，直接上 1.5x
-            if self.position is None and is_breakout:
-                pos_size = (self.balance * 1.5) / price
-                self.position = Position(
-                    entry_price=price, size=pos_size, leverage=1.5,
-                    stop_loss=price - 2*bar['ATR'], peak_price=price
-                )
-                self.trades.append({'type': 'OPEN_BREAKOUT', 'date': date, 'price': price, 'leverage': 1.5})
-                continue
-                
-            # 情况2: 持仓中 -> 滚仓加仓 (Pyramiding)
-            # 条件：已持仓 + (再次突破 OR 浮盈达到阈值) + 杠杆未满
-            if self.position:
-                current_lev = (self.position.size * price) / equity
-                pnl_pct = (price - self.position.entry_price) / self.position.entry_price
-                
-                # 只有当浮盈 > 10% 且 杠杆 < 最大限制时，才允许加仓
-                if pnl_pct > params['add_step'] and current_lev < params['max_leverage']:
-                    # 加仓逻辑：利用浮盈加仓，保持风险敞口可控
-                    add_amt = equity * 0.5 # 每次加本金的50%名义价值
-                    add_size = add_amt / price
-                    
-                    # 重新计算均价
-                    new_total_size = self.position.size + add_size
-                    new_entry = (self.position.entry_price * self.position.size + price * add_size) / new_total_size
-                    
-                    self.position.size = new_total_size
-                    self.position.entry_price = new_entry
-                    self.position.leverage = (new_total_size * price) / equity
-                    
-                    # 关键：加仓后，止损必须立即上移至新均价上方一点点，防止加仓一把亏光
-                    self.position.stop_loss = new_entry * 1.01 
-                    
-                    self.trades.append({'type': 'ROLL_ADD', 'date': date, 'price': price, 'new_lev': self.position.leverage})
-
-        return pd.DataFrame(self.history), pd.DataFrame(self.trades)
-
-# ============================================================
-# 5. 主界面逻辑
-# ============================================================
-def main():
-    st.title("⚔️ 滚仓猎人：趋势突破建控系统")
-    st.markdown("此系统基于 **[底部RSI + 突破放量 + 情绪逆转]** 三大黄金法则，结合 **[金字塔加仓 + ATR移动止损]** 风控模型。")
-    
-    with st.sidebar:
-        st.header("⚙️ 策略参数设置")
-        symbol = st.text_input("交易对 (OKX)", "BTC/USDT")
-        
-        st.subheader("信号参数")
-        breakout_days = st.slider("震荡突破周期 (天)", 30, 120, 90, help="黄金信号2：突破N日新高")
-        rsi_bottom = st.slider("周线底部 RSI 阈值", 20, 45, 35, help="黄金信号1：周线超卖")
-        vol_mult = st.slider("量能爆发倍数", 1.5, 5.0, 3.0, help="黄金信号2：成交量 > N倍均量")
-        
-        st.subheader("滚仓风控")
-        max_lev = st.slider("最大允许杠杆", 1.0, 10.0, 3.0, help="滚仓的尽头是爆仓，建议不超过3x")
-        trail_atr = st.slider("移动止损 ATR倍数", 1.0, 5.0, 2.5, help="越小离场越快，越大抗波动能力越强")
-
-    # --- 1. 获取与处理数据 ---
-    engine = DataEngine()
-    with st.spinner("正在从 OKX 抓取数据并进行双周期计算..."):
-        df_d, df_w = engine.fetch_data(symbol)
-    
-    if df_d.empty:
-        return
-
-    strategy = StrategyEngine(df_d, df_w)
-    df_res = strategy.prepare_indicators(breakout_days=breakout_days, vol_mult=vol_mult)
-
-    # --- 2. 运行滚仓回测 ---
-    backtester = RollingBacktester(initial_capital=10000)
-    df_equity, df_trades = backtester.run(df_res, {
-        'rsi_bottom': rsi_bottom,
-        'max_leverage': max_lev,
-        'add_step': 0.08, # 每8%涨幅尝试加仓
-        'trail_atr': trail_atr
-    })
-    
-    # --- 3. 核心仪表盘 ---
-    last_bar = df_res.iloc[-1]
-    curr_price = last_bar['close']
-    
-    # 判断当前状态
-    rsi_w_val = last_bar.get('RSI_W_DailyMap', 50)
-    is_breakout = (curr_price > last_bar['High_N'])
-    is_uptrend = (curr_price > last_bar['MA20'])
-    
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        st.metric("当前价格", f"${curr_price:,.2f}")
-    with col2:
-        delta = rsi_w_val - rsi_bottom
-        color = "normal"
-        if rsi_w_val < rsi_bottom: color = "inverse"
-        st.metric("周线 RSI (底部信号)", f"{rsi_w_val:.1f}", delta=f"{delta:.1f} 距阈值", delta_color=color)
-    with col3:
-        status = "趋势向下 (空仓)"
-        if is_breakout: status = "🔥 突破爆发 (可滚仓)"
-        elif is_uptrend: status = "📈 趋势向上 (持仓)"
-        st.metric("市场结构状态", status)
-    with col4:
-        roi = ((df_equity.iloc[-1]['equity'] - 10000) / 10000) * 100
-        st.metric("策略模拟收益率", f"{roi:+.2f}%", help="过去2-3年按此策略执行的结果")
-
-    # --- 4. 信号可视化图表 ---
-    st.subheader("📊 信号与资金曲线回溯")
-    
-    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.05, row_heights=[0.7, 0.3])
-    
-    # K线图
-    fig.add_trace(go.Candlestick(
-        x=df_res.index, open=df_res['open'], high=df_res['high'], low=df_res['low'], close=df_res['close'],
-        name='Price'
-    ), row=1, col=1)
-    
-    # 绘制关键均线
-    fig.add_trace(go.Scatter(x=df_res.index, y=df_res['MA20'], line=dict(color='orange', width=1), name='MA20 (生死线)'), row=1, col=1)
-    
-    # 绘制突破线 (Donchian High)
-    fig.add_trace(go.Scatter(x=df_res.index, y=df_res['High_N'], line=dict(color='gray', dash='dot', width=1), name=f'{breakout_days}日高点'), row=1, col=1)
-
-    # 标记交易点
-    if not df_trades.empty:
-        buys = df_trades[df_trades['type'].str.contains('OPEN')]
-        adds = df_trades[df_trades['type'] == 'ROLL_ADD']
-        sells = df_trades[df_trades['type'] == 'CLOSE']
-        
-        fig.add_trace(go.Scatter(
-            x=buys['date'], y=buys['price'], mode='markers', marker=dict(symbol='triangle-up', size=10, color='green'),
-            name='建仓 (Base)'
-        ), row=1, col=1)
-        
-        fig.add_trace(go.Scatter(
-            x=adds['date'], y=adds['price'], mode='markers', marker=dict(symbol='star', size=10, color='gold'),
-            name='滚仓 (Roll)'
-        ), row=1, col=1)
-        
-        fig.add_trace(go.Scatter(
-            x=sells['date'], y=sells['price'], mode='markers', marker=dict(symbol='x', size=8, color='red'),
-            name='离场 (Exit)'
-        ), row=1, col=1)
-
-    # 资金曲线
-    fig.add_trace(go.Scatter(
-        x=df_equity['date'], y=df_equity['equity'], line=dict(color='#6366f1', width=2), fill='tozeroy',
-        name='策略净值'
-    ), row=2, col=1)
-    
-    fig.update_layout(height=700, template="plotly_dark", margin=dict(l=0,r=0,t=0,b=0))
-    st.plotly_chart(fig, use_container_width=True)
-
-    # --- 5. 交易记录 ---
-    with st.expander("查看详细交易日志"):
-        if not df_trades.empty:
-            st.dataframe(df_trades.style.format({'price': '{:.2f}', 'pnl': '{:+.2f}', 'new_lev': '{:.2f}x'}))
+        # 1. 趋势结构 (Trend Structure)
+        if price > ema20 > ema50:
+            logics.append("多头排列：价格 > EMA20 > EMA50，买盘控盘，趋势向上。")
+            score += 2
+        elif price < ema20 < ema50:
+            logics.append("空头排列：价格 < EMA20 < EMA50，卖盘压制，趋势向下。")
+            score -= 2
         else:
-            st.info("当前参数下，历史回测未触发交易信号。")
+            logics.append("均线纠缠：EMA短期均线粘合，市场处于震荡蓄势阶段。")
+            
+        # 2. 动能分析 (Momentum)
+        if rsi > 70:
+            logics.append(f"RSI超买 ({rsi:.0f})：买力过度消耗，警惕回调风险。")
+            score -= 1 # 逆向思维
+        elif rsi < 30:
+            logics.append(f"RSI超卖 ({rsi:.0f})：卖力过度消耗，存在反弹需求。")
+            score += 1
+            
+        if macd > sig and c['HIST'] > 0:
+            if c['HIST'] > prev['HIST']:
+                logics.append("MACD增强：多头动能正在持续放大。")
+                score += 1
+        elif macd < sig and c['HIST'] < 0:
+             if c['HIST'] < prev['HIST']:
+                logics.append("MACD增强：空头动能正在持续放大。")
+                score -= 1
+                
+        # 3. 量价行为 (Price Action & Volume)
+        body = abs(c['close'] - c['open'])
+        lower_wick = min(c['close'], c['open']) - c['low']
+        upper_wick = c['high'] - max(c['close'], c['open'])
+        
+        if rvol > 1.5:
+            term = "放量" if c['close'] > c['open'] else "放量抛压"
+            logics.append(f"资金异动：成交量放大 {rvol:.1f}倍 ({term})，机构介入。")
+            score += 1 if c['close'] > c['open'] else -1
+            
+        if lower_wick > body * 2:
+            logics.append("金针探底：长下影线显示低位有强力承接。")
+            score += 1
+        if upper_wick > body * 2:
+            logics.append("墓碑线：长上影线显示高位抛压沉重。")
+            score -= 1
 
-    # --- 6. 实时操作建议 ---
-    st.markdown("### 🛡️ 华尔街首席执行建议")
+        # --- 策略生成 ---
+        action = "观望 (WAIT)"
+        bias_text = "震荡整理"
+        css_class = "bg-flat"
+        entry, sl, tp = 0, 0, 0
+        
+        risk_unit = atr * 1.5 if not np.isnan(atr) else price * 0.02
+        
+        if score >= 3: # 严格门槛
+            action = "做多 (LONG)"
+            bias_text = "强烈看涨"
+            css_class = "bg-bull"
+            entry = price
+            sl = price - risk_unit
+            # 智能止损优化
+            if not np.isnan(ma200) and price > ma200 and (price - ma200) < risk_unit:
+                sl = ma200 * 0.995
+            tp = price + risk_unit * 2
+            
+        elif score <= -3:
+            action = "做空 (SHORT)"
+            bias_text = "强烈看跌"
+            css_class = "bg-bear"
+            entry = price
+            sl = price + risk_unit
+            if not np.isnan(ma200) and price < ma200 and (ma200 - price) < risk_unit:
+                sl = ma200 * 1.005
+            tp = price - risk_unit * 2
+            
+        return {
+            "tf": tf_name,
+            "bias": bias_text,
+            "css": css_class,
+            "logics": logics,
+            "action": action,
+            "entry": entry,
+            "sl": sl,
+            "tp": tp,
+            "score": score
+        }
+
+# ==========================================
+# 3. 稳健数据层 (Data Engine - OKX Mod)
+# ==========================================
+class MarketDataEngine:
+    def __init__(self):
+        # 关键修改：切换到 OKX，移除 Proxy
+        config = {
+            'timeout': 30000, 
+            'enableRateLimit': True
+        }
+        self.ex = ccxt.okx(config)
     
-    advice = ""
-    if is_breakout and last_bar['Vol_Boom']:
-        advice = """
-        <div class='metric-card' style='border-color: #f59e0b;'>
-            <h4 style='color: #fbbf24;'>🚀 触发黄金信号 2：趋势爆发</h4>
-            <ul>
-                <li><b>检测到：</b>价格突破 90 日震荡区间，且成交量放大。</li>
-                <li><b>建议行动：</b>如果当前空仓，建议建立 30% 观察仓位；如果已有底仓且盈利，可开启第一次滚仓加仓。</li>
-                <li><b>风控：</b>止损位务必设置在 MA20 均线下方。</li>
-            </ul>
-        </div>
-        """
-    elif rsi_w_val < rsi_bottom:
-        advice = """
-        <div class='metric-card' style='border-color: #10b981;'>
-            <h4 style='color: #34d399;'>🌱 触发黄金信号 1：底部超卖</h4>
-            <ul>
-                <li><b>检测到：</b>周线 RSI 进入历史底部区域。</li>
-                <li><b>建议行动：</b>定投买入现货，或建立 1x 低倍合约。<b>严禁重仓滚仓，此时是左侧接刀阶段。</b></li>
-                <li><b>心态：</b>做好长期持有的准备，等待趋势反转信号。</li>
-            </ul>
-        </div>
-        """
-    elif is_uptrend:
-        advice = """
-        <div class='metric-card' style='border-color: #6366f1;'>
-            <h4 style='color: #818cf8;'>📈 趋势持仓中 (Rolling)</h4>
-            <ul>
-                <li><b>状态：</b>价格位于 MA20 之上，趋势健康。</li>
-                <li><b>建议行动：</b>持有底仓。如果浮盈超过 10%，可检查是否满足加仓条件。</li>
-                <li><b>核心：</b>管住手，不要轻易止盈，让利润奔跑；同时紧盯移动止损线。</li>
-            </ul>
-        </div>
-        """
+    def fetch(self, symbol, tf):
+        try:
+            # 抓取足够数据以确保指标稳定
+            bars = self.ex.fetch_ohlcv(symbol, timeframe=tf, limit=300)
+            if not bars: return None
+            df = pd.DataFrame(bars, columns=['time', 'open', 'high', 'low', 'close', 'vol'])
+            df['time'] = pd.to_datetime(df['time'], unit='ms')
+            
+            # 计算指标
+            df['EMA20'] = ta.ema(df['close'], length=20)
+            df['EMA50'] = ta.ema(df['close'], length=50)
+            df['MA200'] = ta.sma(df['close'], length=200)
+            df['ATR'] = ta.atr(df['high'], df['low'], df['close'], length=14)
+            df['RSI'] = ta.rsi(df['close'], length=14)
+            macd = ta.macd(df['close'])
+            if macd is not None:
+                df['MACD'] = macd.iloc[:, 0]
+                df['SIGNAL'] = macd.iloc[:, 1]
+                df['HIST'] = macd.iloc[:, 2]
+            return df
+        except: return None
+
+    def get_all(self, symbol):
+        d = {}
+        # 云端优化：改为顺序执行，防止 Cloud CPU 资源耗尽导致 Timeout
+        d['1m'] = self.fetch(symbol, '1m')
+        d['15m'] = self.fetch(symbol, '15m')
+        d['1h'] = self.fetch(symbol, '1h')
+        d['1d'] = self.fetch(symbol, '1d')
+        try:
+            d['ticker'] = self.ex.fetch_ticker(symbol)
+        except:
+            d['ticker'] = None
+        return d
+
+# ==========================================
+# 4. 安全渲染层 (V21 拼接逻辑)
+# ==========================================
+def build_card_html(res):
+    if not res: return "<div style='color:red'>数据不足</div>"
+    
+    # 1. 构建逻辑列表
+    logic_items = ""
+    for lg in res['logics']:
+        logic_items += f"<div class='pc-item'><span class='pc-icon'>•</span><span>{lg}</span></div>"
+    
+    # 2. 构建交易计划
+    plan_html = ""
+    if "观望" in res['action']:
+        plan_html = "<div class='pc-plan' style='text-align:center; color:#666;'><div⚖️ 市场震荡中</div><div style='font-size:12px'>建议空仓等待方向明确</div></div>"
     else:
-        advice = """
-        <div class='metric-card' style='border-color: #ef4444;'>
-            <h4 style='color: #f87171;'>🛑 空仓观望 (Wait)</h4>
-            <ul>
-                <li><b>状态：</b>未触发底部信号，也未触发突破信号，或趋势已破坏。</li>
-                <li><b>建议行动：</b>休息是交易的一部分。不要在垃圾时间里亏掉牛市的本金。</li>
-            </ul>
-        </div>
-        """
+        c_val = "#2ea043" if "多" in res['action'] else "#da3633"
+        # 逐行构建
+        p_rows = ""
+        p_rows += f"<div class='pp-row'><span class='pp-lbl'>操作建议</span><span class='pp-val' style='color:{c_val}'>{res['action']}</span></div>"
+        p_rows += f"<div class='pp-row'><span class='pp-lbl'>建议入场</span><span class='pp-val'>${res['entry']:,.2f}</span></div>"
+        p_rows += f"<div class='pp-row'><span class='pp-lbl'>止损位</span><span class='pp-val' style='color:#da3633'>${res['sl']:,.2f}</span></div>"
+        p_rows += f"<div class='pp-row'><span class='pp-lbl'>目标位</span><span class='pp-val' style='color:#2ea043'>${res['tp']:,.2f}</span></div>"
+        plan_html = f"<div class='pc-plan' style='border-color:{c_val}40'>{p_rows}</div>"
+
+    # 3. 组合最终 HTML
+    html = f"<div class='pro-card'><div class='pc-header'><span class='pc-title'>{res['tf']}</span><span class='pc-tag {res['css']}'>{res['bias']}</span></div><div class='pc-logic'>{logic_items}</div>{plan_html}</div>"
     
-    st.markdown(advice, unsafe_allow_html=True)
+    return html
+
+# ==========================================
+# 5. 主程序 (Main)
+# ==========================================
+def main():
+    with st.sidebar:
+        st.title("COMMANDER-@ZZ-JS-ZZ")
+        st.caption("华尔街深度策略版 [仅供参考]")
+        
+        # OKX 的代码通用，通常也是 BTC/USDT 这种格式
+        coins = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'BNB/USDT', 'ZEC/USDT', 'DASH/USDT', 'DOGE/USDT', 'XRP/USDT', 'PEPE/USDT', 'ORDI/USDT']
+        sel_coin = st.selectbox("选择标的", coins)
+        
+        if st.button("⚡ 立即分析市场", use_container_width=True):
+            st.rerun()
+            
+        st.markdown("---")
+        st.info("策略模型：\n1. 趋势共振 (Trend)\n2. 动能衰竭/增强 (Momentum)\n3. 机构量能 (VPA)\n4. 智能止损 (Smart SL)")
+
+    eng = MarketDataEngine()
+    
+    with st.spinner(f"正在从 OKX 获取全周期数据: {sel_coin} ..."):
+        data = eng.get_all(sel_coin)
+        
+    if not data or not data.get('ticker'):
+        st.error("网络连接失败，OKX 接口响应超时。")
+        st.stop()
+        
+    # --- 顶部行情 ---
+    tick = data['ticker']
+    p_color = "#2ea043" if tick['percentage'] >= 0 else "#da3633"
+    # 使用列表拼接
+    head_parts = []
+    head_parts.append("<div style='background:#161b22; border:1px solid #d2a656; padding:15px; border-radius:6px; margin-bottom:20px; display:flex; justify-content:space-between; align-items:center;'>")
+    head_parts.append(f"<div><div style='color:#d2a656; font-weight:bold; font-size:18px;'>{sel_coin} 深度研报</div><div style='color:#8b949e; font-size:12px;'>报告时间: {datetime.now().strftime('%H:%M:%S')}</div></div>")
+    head_parts.append(f"<div style='text-align:right'><div style='font-size:28px; font-weight:bold; color:#e6edf3'>${tick['last']:,.2f}</div><div style='color:{p_color}; font-weight:bold'>{tick['percentage']:.2f}%</div></div>")
+    head_parts.append("</div>")
+    st.markdown("".join(head_parts), unsafe_allow_html=True)
+    
+    # --- 分析卡片 ---
+    c1, c2 = st.columns(2)
+    
+    # 计算逻辑
+    r_1m = WallStreetAnalyst.deep_scan(data['1m'], "超短线 (1 Min)")
+    r_15m = WallStreetAnalyst.deep_scan(data['15m'], "日内 (15 Min)")
+    r_1h = WallStreetAnalyst.deep_scan(data['1h'], "波段 (1 Hour)")
+    r_1d = WallStreetAnalyst.deep_scan(data['1d'], "趋势 (1 Day)")
+    
+    # 渲染
+    with c1:
+        st.markdown("#### ⚡ 短线博弈")
+        st.markdown(build_card_html(r_1m), unsafe_allow_html=True)
+        st.markdown(build_card_html(r_15m), unsafe_allow_html=True)
+        
+    with c2:
+        st.markdown("#### 🌊 趋势布局")
+        st.markdown(build_card_html(r_1h), unsafe_allow_html=True)
+        st.markdown(build_card_html(r_1d), unsafe_allow_html=True)
+        
+    # --- 最终建议 ---
+    total_score = 0
+    if r_15m: total_score += r_15m['score']
+    if r_1h: total_score += r_1h['score'] * 1.5 # 1小时权重更高
+    if r_1d: total_score += r_1d['score'] * 2.0 # 日线权重最高
+    
+    final_text = "市场混沌，建议观望"
+    f_bg = "#8b949e"
+    
+    if total_score >= 4:
+        final_text = "💎 极强多头共振 (全仓做多信号)"
+        f_bg = "#2ea043"
+    elif total_score >= 2:
+        final_text = "📈 震荡偏多 (逢低做多)"
+        f_bg = "#2ea043"
+    elif total_score <= -4:
+        final_text = "⚠️ 极强空头共振 (清仓/做空信号)"
+        f_bg = "#da3633"
+    elif total_score <= -2:
+        final_text = "📉 震荡偏空 (逢高做空)"
+        f_bg = "#da3633"
+        
+    sum_html = f"<div style='background:{f_bg}20; border:1px solid {f_bg}; padding:20px; border-radius:6px; text-align:center; margin-top:20px;'><div style='color:{f_bg}; font-weight:bold; font-size:14px;'>首席分析师最终裁决</div><div style='color:#e6edf3; font-size:24px; font-weight:bold; margin:10px 0;'>{final_text}</div><div style='color:#8b949e; font-size:13px'>综合评分: {total_score:.1f} (评分>4为极强信号)</div></div>"
+    st.markdown(sum_html, unsafe_allow_html=True)
+    
+    # --- 图表 ---
+    with st.expander("📊 查看 1小时 K线深度图 (Price Action)", expanded=True):
+        if data['1h'] is not None:
+            df = data['1h']
+            fig = go.Figure(data=[go.Candlestick(x=df['time'], open=df['open'], high=df['high'], low=df['low'], close=df['close'],
+                                increasing_line_color='#2ea043', decreasing_line_color='#da3633')])
+            fig.update_layout(template='plotly_dark', margin=dict(l=0,r=0,t=0,b=0), height=400, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+            st.plotly_chart(fig, use_container_width=True)
 
 if __name__ == "__main__":
     main()
+
+
